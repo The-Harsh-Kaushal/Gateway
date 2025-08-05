@@ -26,4 +26,10 @@ router.get('/logoutall',logoutAll,(req,res)=>{
         msg: "Lougt All sucessfull"
     })
 })
+
+router.get("/hello", (req, res) => {
+  res.status(200).json({
+    msg: "sucessfull ",
+  });
+});
 module.exports = router;

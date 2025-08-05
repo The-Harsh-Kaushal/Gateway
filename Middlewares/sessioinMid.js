@@ -36,34 +36,33 @@ const CreateSession = async (req, res, next) => {
   } catch (err) {
     console.log("Error while creating a session ", err);
     return res.status(500).json({
-      message: "session creation failed",
+      msg: "session creation failed",
     });
   }
 };
 
 const VerifySession = async (req, res, next) => {
-  let token = req.headers?.authorization;
-  if (!token) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({
-      msg: "token missing",
+      msg: "Token missing or malformed",
     });
   }
 
-  token = token.split(" ")[1];
+  const token = authHeader.split(" ")[1];
+
   try {
     const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
     req.user = payload;
     next();
   } catch (err) {
-    console.log(
-      "error happned at ./middlewares/sessionMid.js/verifysession.......... ",
-      err
-    );
+    console.log("JWT verification failed:", err.message);
     return res.status(401).json({
-      msg: "Token expired",
+      msg: "Invalid or expired token",
     });
   }
 };
+
 
 const RefreshSession = async (req, res, next) => {
   const refreshToken = req.cookies["refreshToken"];

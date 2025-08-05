@@ -4,6 +4,7 @@ const cookieParser = require("cookie-parser");
 const authenticationRoutes = require("./Routes/authentication");
 const sessionRoutes = require("./Routes/session");
 const { VerifySession } = require("./Middlewares/sessioinMid");
+// const { RestSRL, AuthSRL } = require("./Middlewares/staticRateLimiting");
 
 require("dotenv").config();
 
@@ -11,6 +12,8 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+// app.use("/auth", AuthSRL);
+// app.use("/session", RestSRL);
 app.use("/auth", authenticationRoutes);
 app.use("/session", sessionRoutes);
 
