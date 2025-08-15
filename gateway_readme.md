@@ -21,7 +21,7 @@
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/gateway.git
+git clone https://github.com/The-Harsh-Kaushal/Gateway.git
 cd gateway
 npm install
 ```
