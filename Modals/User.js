@@ -4,7 +4,7 @@ const UserSchema = new mongoose.Schema({
   uniqueId: { type: String, unique: true, required: true },
   fullName: { type: String, required: true },
   email : {type: String , required: true},
-  hashedPassword: { type: String, required: true },
+  hashedPassword: { type: String },
   session: [
     {
       token: String,
@@ -13,7 +13,11 @@ const UserSchema = new mongoose.Schema({
       device: String,
     },
   ],
-  roles: { type: String, default: "user" },
+  oauth2:{
+     provided : {type: Boolean ,default: false},
+     accessToken: {type:String},
+     refreshToken:{type: String}
+  },
   isVerified: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },

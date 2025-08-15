@@ -1,8 +1,9 @@
 const express = require("express");
 const { RefreshSession, logout, logoutAll } = require("../Middlewares/sessioinMid");
+const { OAuth2GoogleRefresh } = require("../Middlewares/OAuth2/auth2Mid");
 const router = express.Router();
 
-router.get("/refresh", RefreshSession, async (req, res,) => {
+router.get("/refresh",OAuth2GoogleRefresh, RefreshSession, async (req, res,) => {
   const token = req.token;
   res.cookie("refreshToken", token.refreshToken, {
     httpOnly: true,

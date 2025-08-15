@@ -1,5 +1,5 @@
 const bcrypt = require("bcrypt");
-const User = require("../modals/User");
+const User = require("../Modals/User");
 const jwt = require("jsonwebtoken");
 
 const CreateSession = async (req, res, next) => {

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Redirect Button</title>
+</head>
+<body>
+  <button id="redirectBtn">Login with Google</button>
+
+  <script>
+    document.getElementById('redirectBtn').addEventListener('click', async () => {
+      try {
+        // Change this to your backend endpoint
+        const backendUrl = 'http://localhost:5000/auth/google';
+
+        const res = await fetch(backendUrl, {
+          method: 'GET', // or POST depending on your backend
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!res.ok) {
+          throw new Error(`Server error: ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        if (data.url) {
+          // Redirect the user to the URL provided by backend
+          window.location.href = data.url;
+        } else {
+          console.error("No URL found in response", data);
+        }
+      } catch (err) {
+        console.error('Error fetching redirect URL:', err);
+      }
+    });
+  </script>
+</body>
+</html>

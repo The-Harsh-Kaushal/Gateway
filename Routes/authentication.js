@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { LoginMiddleware, SignInMiddleware } = require("../Middlewares/authMid");
 const { CreateSession } = require("../Middlewares/sessioinMid");
+const { OAuth2Google } = require("../Middlewares/OAuth2/auth2Mid");
 
 router.post("/login", LoginMiddleware, CreateSession, (req, res) => {
   const tokens = req.tokens;
@@ -35,5 +36,15 @@ router.post("/signin", SignInMiddleware, CreateSession, (req, res) => {
   });
 });
 
+router.get("/google", (req, res) => {
+  res.status(200).json({
+    url: `${process.env.GOOGLE_OAUTH2_URL}`,
+  });
+});
+router.get("/google/callback", OAuth2Google,CreateSession, (req, res) => {
+  return res.status(200).json({
+    msg: "hell yeah!",
+  });
+});
 
 module.exports = router;

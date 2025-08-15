@@ -1,5 +1,5 @@
 const bcrypt = require("bcrypt");
-const User = require("../modals/User");
+const User = require("../Modals/User");
 
 const LoginMiddleware = async (req, res, next) => {
   const { identifier, password } = req.body;
