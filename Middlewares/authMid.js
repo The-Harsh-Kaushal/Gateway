@@ -10,6 +10,7 @@ const LoginMiddleware = async (req, res, next) => {
   }
 
   try {
+    // can use any of email or unique ID to login
     const AUser = await User.findOne({
       $or: [{ uniqueId: identifier }, { email: identifier }],
     });
@@ -28,18 +29,11 @@ const LoginMiddleware = async (req, res, next) => {
     req.user = AUser;
     next();
   } catch (err) {
-    console.log(
-      "this console is present in middlewares/authMid.js/LoginMiddleware ....................."
-    );
-    console.log(err);
-    return res.status(500).json({
-      msg: "Internal Error",
-    });
+    throw err;
   }
 };
 
 const SignInMiddleware = async (req, res, next) => {
- 
   const { uniqueId, email, password, fullname } = req.body;
   if (!uniqueId || !email || !password || !fullname) {
     return res.status(400).json({
@@ -47,12 +41,6 @@ const SignInMiddleware = async (req, res, next) => {
     });
   }
   try {
-    const AUser = await User.findOne({ uniqueId: uniqueId, email: email });
-    if (AUser) {
-      return res.status(400).json({
-        msg: "User already exsists",
-      });
-    }
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({
       fullName: fullname,
@@ -65,13 +53,15 @@ const SignInMiddleware = async (req, res, next) => {
     req.user = newUser;
     next();
   } catch (err) {
-    console.log(
-      "this console is present in middlewares/authMid.js/SignInMiddleware ....................."
-    );
-    console.log(err);
-    return res.status(500).json({
-      msg: "Internal Error",
-    });
+    if (err.code === 11000) {
+      if (err.keyPattern.uniqueId) {
+        return res.status(400).json({ msg: "Unique ID is taken" });
+      }
+      if (err.keyPattern.email) {
+        return res.status(400).json({ msg: "Email is already in use" });
+      }
+    }
+    throw err;
   }
 };
 

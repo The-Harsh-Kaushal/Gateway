@@ -1,98 +1,129 @@
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
+const { redis } = require("../../Redis/RedisClient");
+const fs = require("fs");
+const path = require("path");
 
-const LB_Map = new Map();
-// a helper function to do redundent task
-// this is a helper fn that will help both the auth and rest it takes id and othre parameters where id can be anything to out needs
-function LBHelper(res, id, limit, Window_size_MS) {
-  const getElement = LB_Map.get(id);
 
-  const resetTime = Math.floor(Window_size_MS / limit);
-  if (getElement.lastReset + resetTime <= Date.now()) {
-    const inc_sizeby = Math.floor(
-      (Date.now() - getElement.lastReset) / resetTime
-    );
-    getElement.currentSize =
-      getElement.currentSize + inc_sizeby > limit
-        ? limit
-        : getElement.currentSize + inc_sizeby;
-  }
-  res.setHeader("RateLimit-Limit", limit);
-  res.setHeader(
-    "RateLimit-Reset",
-    (limit - getElement.currentSize) * resetTime
+//read the lua script
+let luaScript;
+
+try {
+  luaScript = fs.readFileSync(
+    path.resolve(__dirname, "../../Redis/lua/bucketScripting.lua"),
+    "utf8"
   );
-  res.setHeader("RateLimit-Remaining", getElement.currentSize);
-  if (getElement.currentSize === 0) {
-    return false;
-  }
-  getElement.currentSize -= 1;
-  return true;
+} catch (err) {
+  console.error("❌ Failed to load Redis Lua script:", err.message);
+  process.exit(1); 
 }
+//lua script 2
+let luaScript2;
+try {
+  luaScript = fs.readFileSync(
+    path.resolve(__dirname, "../../Redis/lua/RestbucketScript.lua"),
+    "utf8"
+  );
+} catch (err) {
+  console.error("❌ Failed to load Redis Lua script:", err.message);
+  process.exit(1); 
+}
+// load into redis, get SHA
+const sha = await redis.scriptLoad(luaScript);
+const sha2 = await redis.scriptLoad(luaScript2);
 
 // reate limiter for authentication
-const AuthLB = (req, res, next) => {
-  const cookie = req.cookies["pseudo-session"];
-  let u_id;
-  // these two variable decide how many req in one window (limit ), and what's the full size of window (window_size_ms)
-  const limit = 10;
-  const Window_Size_Ms = 60000;
-  if (!cookie || !LB_Map.has(cookie)) {
-    u_id = crypto.randomBytes(64).toString("hex");
-    LB_Map.set(u_id, {
-      currentSize: limit,
-      lastReset: Date.now(),
-    });
-    res.cookie("pseudo-session", u_id, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "strict",
-      maxAge: 1000 * 60 * 60,
-    });
-  } else {
-    u_id = cookie;
-  }
-  if (LBHelper(res, u_id, limit, Window_Size_Ms)) {
-    return next();
-  }
-  return res.status(429).json({
-    msg: "No more req for u ",
-  });
-};
+function AuthLB(AuthCapacity, Auth_win_size_ms, IP_factor, Expiration_factor) {
+  return async (req, res, next) => {
+    //setting default values
+    if (!AuthCapacity) AuthCapacity = 10;
+    if (!Auth_win_size_ms) Auth_win_size_ms = 6000;
+    if (!IP_factor) IP_factor = 10;
+    if (!Expiration_factor) Expiration_factor = 2;
 
-const RestLB = (req, res, next) => {
-  const cookie = req.cookies["pseudo-session"];
-  if (cookie) {
-    res.clearCookie("pseudo-session", {
-      httpOnly: true,
-      secure: false,
-      sameSite: "strict",
-    });
-    LB_Map.delete(cookie);
-  }
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("BEARER ")) {
-    return res.status(401).json({ msg: "Token missing or malformed" });
-  }
-  const token = authHeader.split(" ")[1];
-  const limit = 100;
-  const Window_Size_Ms = 600000;
-  try {
-    const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-    LB_Map.set(payload.uniqueId, {
-      currentSize: limit,
-      lastReset: Date.now(),
-    });
-    if (LBHelper(res, payload.uniqueId, limit, Window_Size_Ms)) {
-      return next();
+    // getting that cookie for random devices
+    const cookie = req.cookies["pseudo-session"];
+    const user_ip = req.ip;
+
+    // we will check if the cookie exsist in the pool if not create one
+    let u_id = cookie;
+    if (!cookie) {
+      u_id = crypto.randomBytes(64).toString("hex");
+      res.cookie("pseudo-session", u_id, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        maxAge: 1000 * 60 * 60,
+      });
     }
-    return res.status(429).json({ msg: "No more  requests for you" });
-  } catch (err) {
-    console.log(err.msg);
-    return res.status(500).json({
-      msg: "token is invalid",
+    // now the time to run lua script
+    const allowed = await redis.evalSha(sha, {
+      keys: [`bucket:PC:${u_id}`, `bucket:IP:${user_ip}`],
+      arguments: [
+        AuthCapacity,
+        Auth_win_size_ms,
+        Date.now(),
+        IP_factor,
+        Expiration_factor,
+      ],
     });
-  }
-};
+    if (allowed) return next();
+
+    return res.status(429).json({
+      msg: "No more req for u ",
+    });
+  };
+}
+function RestLB(AuthCapacity, Auth_win_size_ms, Prefix, Expiration_factor) {
+  return async function (req, res, next) {
+
+    // defaults
+    if (!AuthCapacity) AuthCapacity = 10;
+    if (!Auth_win_size_ms) Auth_win_size_ms = 6000;
+    if (!Prefix) Prefix = "AT";
+    if (!Expiration_factor) Expiration_factor = 2;
+
+    // extract access token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ msg: "Token missing or malformed" });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    } catch (err) {
+      return res.status(401).json({ msg: "Invalid or expired token" });
+    }
+
+    // ✅ extract unique identity from token
+    const uniqueId = payload.sub; // or payload.userId
+
+    if (!uniqueId) {
+      return res.status(401).json({ msg: "Invalid token payload" });
+    }
+
+    // rate limit
+    const allowed = await redis.evalSha(sha2, {
+      keys: [`bucket:${Prefix}:${uniqueId}`],
+      arguments: [
+        AuthCapacity,
+        Auth_win_size_ms,
+        Date.now(),
+        Expiration_factor,
+      ],
+    });
+
+    if (allowed) return next();
+
+    return res.status(429).json({
+      msg: "No more requests for you",
+    });
+  };
+}
+
+
 
 module.exports = { AuthLB, RestLB };
